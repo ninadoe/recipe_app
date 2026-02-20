@@ -3,7 +3,8 @@ from database import SessionLocal
 from datetime import date
 from sqlalchemy import select, func, desc
 
-
+"""
+-> schon in main?!
 def create_full_recipe(name:str,
                        number_of_portions:int,
                        instructions:str,
@@ -12,13 +13,14 @@ def create_full_recipe(name:str,
                        meal_type:str|None=None,
                        notes:str|None=None,
                        nationality:str|None=None):
-    """
-    Creating compelete recipe with linkages to the needed ingredients and kitchen tools.
-    Saving the changes permanently in the database.
-    ingredient_list: [(ingredient_name, quantity, unit, component)]
-    tool_list: [kitchen_tool_name]
-    """
-
+"""
+"""
+Creating compelete recipe with linkages to the needed ingredients and kitchen tools.
+Saving the changes permanently in the database.
+ingredient_list: [(ingredient_name, quantity, unit, component)]
+tool_list: [kitchen_tool_name]
+"""
+"""
     session = SessionLocal()
 
     try:
@@ -51,6 +53,7 @@ def create_full_recipe(name:str,
         raise
     finally:
         session.close()
+"""
 
 
 def create_recipe(session,
@@ -206,28 +209,22 @@ def get_recipe_tools(session, recipe_id: int):
     return tool_list
 
 
-def get_all_recipes():
+def get_all_recipes(session):
     """
     Getting a list of all recipes in the database.
     """
-
-    session = SessionLocal()
 
     recipe_list = session.execute(
         select(Recipes)
     ).scalars().all()
 
-    session.close()
-
     return recipe_list
 
 
-def get_full_recipe_by_id(recipe_id: int):
+def get_full_recipe_by_id(session, recipe_id: int):
     """
     Getting the recipe to the given ID with its ingredients and needed kitchen tools.
     """
-    
-    session = SessionLocal()
 
     recipe = get_recipe_by_id(session, recipe_id)
 
@@ -237,19 +234,15 @@ def get_full_recipe_by_id(recipe_id: int):
     ingredient_dict = get_recipe_ingredients(session, recipe_id)
     tool_list = get_recipe_tools(session, recipe_id)
 
-    session.close()
-
     return {"recipe": recipe,
             "ingredients": ingredient_dict,
             "tools": tool_list}
 
 
-def get_recipes_by_ingredients(ingredient_list: list):
+def get_recipes_by_ingredients(session, ingredient_list: list):
     """
     Getting a list of recipes which contain all ingredients contained in the list.
     """
-
-    session = SessionLocal()
 
     recipe_list = session.execute(
         select(Recipes)
@@ -259,19 +252,15 @@ def get_recipes_by_ingredients(ingredient_list: list):
         .having(func.count(func.distinct(Ingredients.id)) == len(ingredient_list))
     ).scalars().all()
 
-    session.end()
-
     return recipe_list
 
 
-def get_best_recipes_for_ingredients(ingredient_list: list):
+def get_best_recipes_for_ingredients(session, ingredient_list: list):
     """
     Getting a list of recipes which contain at least one ingredient of the given list.
     Sorting the list descending by the number of matching ingredients.
     Output: [(Recipe, Number of matching ingredients)]
     """
-
-    session = SessionLocal()
 
     recipe_list = session.execute(
         select(Recipes, 
@@ -282,12 +271,11 @@ def get_best_recipes_for_ingredients(ingredient_list: list):
         .order_by(desc("matching_ingredients_count"))
     ).all()
 
-    session.close()
-
     return recipe_list
 
 
-def get_best_recipes_for_ingredients_with_quantity(ingredient_list: list,
+def get_best_recipes_for_ingredients_with_quantity(session,
+                                                   ingredient_list: list,
                                                    number_of_portions: int):
     """
     Getting a list of recipes which contain at least one ingredient of the given list.
@@ -296,8 +284,6 @@ def get_best_recipes_for_ingredients_with_quantity(ingredient_list: list,
     their needed amount for the given number of poortions.
     Output: [{Recipe, Number of matching ingredients, {ingredient: {quantity, unit}}}]
     """
-
-    session = SessionLocal()
 
     recipe_ingredient_list = session.execute(
         select(Recipes, 
@@ -311,8 +297,6 @@ def get_best_recipes_for_ingredients_with_quantity(ingredient_list: list,
               RecipeIngredients.ingredient_id == Ingredients.id)
         .where(Ingredients.name.in_(ingredient_list))
     ).all()
-
-    session.close()
 
     recipe_map = {}
     for recipe, ing, qnt, u in recipe_ingredient_list:
@@ -329,35 +313,27 @@ def get_best_recipes_for_ingredients_with_quantity(ingredient_list: list,
     return recipe_list
 
 
-def get_recipes_by_nationality(nationality: str):
+def get_recipes_by_nationality(session, nationality: str):
     """
     Getting a list of recipes of the given nationality.
     """
-
-    session = SessionLocal()
 
     recipe_list = session.execute(
         select(Recipes)
         .where(Recipes.nationality == nationality)
     ).scalars.all()
 
-    session.end()
-
     return recipe_list
 
 
-def get_recipes_by_meal_type(meal_type: str):
+def get_recipes_by_meal_type(session, meal_type: str):
     """
     Getting a list of recipes of the given meal type.
     """
-
-    session = SessionLocal()
 
     recipe_list = session.execute(
         select(Recipes)
         .where(Recipes.meal_type == meal_type)
     ).scalars.all()
-
-    session.end()
 
     return recipe_list

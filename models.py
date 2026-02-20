@@ -11,7 +11,7 @@ class KitchenTools(Base):
     name = Column(String, nullable=False)
     given = Column(Boolean, default=False)
     
-    recipes = relationship("RecipeTool", back_populates="tool")
+    recipes = relationship("RecipeTools", back_populates="tool")
     
 class Ingredients(Base):
 	__tablename__ = "ingredients"
@@ -28,7 +28,7 @@ class RecipeTools(Base):
     tool_id = Column(Integer, ForeignKey("kitchen_tools.id"), primary_key=True)
     
     recipe = relationship("Recipes", back_populates="tools")
-    tool = relationship("KitchenTool")
+    tool = relationship("KitchenTools")
   
 class RecipeIngredients(Base):
 	__tablename__ = "recipe_ingredients"
