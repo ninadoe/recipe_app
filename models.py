@@ -36,6 +36,7 @@ class RecipeIngredients(Base):
 	ingredient_id = Column(Integer, ForeignKey("ingredients.id"), primary_key=True)
 	quantity = Column(Float, nullable=True)
 	unit = Column(String, nullable=True)
+	component = Column(String, nullable=True)
 	
 	recipe = relationship("Recipes", back_populates="ingredients")
 	ingredient = relationship("Ingredients")
