@@ -1,5 +1,6 @@
 from sqlalchemy import Column, Integer, String, Boolean, ForeignKey, Float, Date, Text
 from sqlalchemy.orm import declarative_base, relationship
+from sqlalchemy.ext.associationproxy import association_proxy
 
 Base = declarative_base()
 
@@ -18,28 +19,7 @@ class Ingredients(Base):
 	id = Column(Integer, primary_key=True)
 	name = Column(String, nullable=False)
 	
-	recipes = relationship("RecipeIngredients", back_populates="ingredient")
-
-# Connection Tables
-
-class RecipeTools(Base):
-    __tablename__ = "recipe_tools"
-    recipe_id = Column(Integer, ForeignKey("recipes.id"), primary_key=True)
-    tool_id = Column(Integer, ForeignKey("kitchen_tools.id"), primary_key=True)
-    
-    recipe = relationship("Recipes", back_populates="tools")
-    tool = relationship("KitchenTools")
-  
-class RecipeIngredients(Base):
-	__tablename__ = "recipe_ingredients"
-	recipe_id = Column(Integer, ForeignKey("recipes.id"), primary_key=True)
-	ingredient_id = Column(Integer, ForeignKey("ingredients.id"), primary_key=True)
-	quantity = Column(Float, nullable=True)
-	unit = Column(String, nullable=True)
-	component = Column(String, nullable=True)
-	
-	recipe = relationship("Recipes", back_populates="ingredients")
-	ingredient = relationship("Ingredients")
+	recipes = relationship("RecipeIngredients", back_populates="ingredient")    
 	
 # Main Table	
 	
@@ -55,5 +35,40 @@ class Recipes(Base):
 	notes = Column(Text, nullable=True)
 	
 	ingredients = relationship("RecipeIngredients", back_populates="recipe")
+	ingredient_names = association_proxy("ingredients", "ingredient.name")
 	tools = relationship("RecipeTools", back_populates="recipe")
+	tool_names = association_proxy("tools", "tool.name")
+	
+
+# Connection Tables
+
+class RecipeTools(Base):
+    __tablename__ = "recipe_tools"
+    recipe_id = Column(Integer, ForeignKey("recipes.id"), primary_key=True)
+    tool_id = Column(Integer, ForeignKey("kitchen_tools.id"), primary_key=True)
+    
+    recipe = relationship("Recipes", back_populates="tools")
+    tool = relationship("KitchenTools")
+
+    @property
+    def name(self):
+        return self.tool.name    
+    
+  
+class RecipeIngredients(Base):
+    __tablename__ = "recipe_ingredients"
+    recipe_id = Column(Integer, ForeignKey("recipes.id"), primary_key=True)
+    ingredient_id = Column(Integer, ForeignKey("ingredients.id"), primary_key=True)
+    quantity = Column(Float, nullable=True)
+    unit = Column(String, nullable=True)
+    component = Column(String, nullable=True)
+
+    recipe = relationship("Recipes", back_populates="ingredients")
+    ingredient = relationship("Ingredients")
+
+    @property
+    def name(self):
+        return self.ingredient.name
+      
+
 	

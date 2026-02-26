@@ -1,59 +1,40 @@
 from models import Recipes, Ingredients, RecipeIngredients, KitchenTools, RecipeTools
-from database import SessionLocal
 from datetime import date
 from sqlalchemy import select, func, desc
+from sqlalchemy.orm import joinedload
+from fastapi import HTTPException
+from schemas import RecipeCreate
 
-"""
--> schon in main?!
-def create_full_recipe(name:str,
-                       number_of_portions:int,
-                       instructions:str,
-                       ingredient_list:list,
-                       tool_list:list|None=None,
-                       meal_type:str|None=None,
-                       notes:str|None=None,
-                       nationality:str|None=None):
-"""
-"""
-Creating compelete recipe with linkages to the needed ingredients and kitchen tools.
-Saving the changes permanently in the database.
-ingredient_list: [(ingredient_name, quantity, unit, component)]
-tool_list: [kitchen_tool_name]
-"""
-"""
-    session = SessionLocal()
 
-    try:
-        recipe_id = create_recipe(session, 
-                                  name, 
-                                  number_of_portions,
-                                  instructions,
-                                  meal_type,
-                                  notes,
-                                  nationality)
-        
-        for ingredient_name, quantity, unit, component in ingredient_list:
-            add_ingredient_to_recipe(session, 
-                                     recipe_id, 
-                                     ingredient_name,
-                                     quantity, 
-                                     unit,
-                                     component)
-            
-        for kitchen_tool_name in tool_list:
-            add_tool_to_recipe(session, 
-                               recipe_id,
-                               kitchen_tool_name)
-            
-        session.commit()
-        return recipe_id
+def create_full_recipe(session,
+                       recipe: RecipeCreate):
+    """
+    Creating compelete recipe with linkages to the needed ingredients and kitchen tools.
+    Saving the changes permanently in the database.
+    """
+
+    recipe_id = create_recipe(session=session, 
+                              name=recipe.name, 
+                              number_of_portions=recipe.number_of_portions,
+                              instructions=recipe.instructions,
+                              meal_type=recipe.meal_type,
+                              notes=recipe.notes,
+                              nationality=recipe.nationality)
     
-    except:
-        session.rollback()
-        raise
-    finally:
-        session.close()
-"""
+    for ingredient in recipe.ingredients:
+        add_ingredient_to_recipe(session, 
+                                 recipe_id, 
+                                 ingredient.name,
+                                 ingredient.quantity, 
+                                 ingredient.unit,
+                                 getattr(ingredient, "component", None))
+        
+    for kitchen_tool in recipe.tools:
+        add_tool_to_recipe(session, 
+                            recipe_id,
+                            kitchen_tool.name)
+            
+    return recipe_id
 
 
 def create_recipe(session,
@@ -221,22 +202,25 @@ def get_all_recipes(session):
     return recipe_list
 
 
-def get_full_recipe_by_id(session, recipe_id: int):
+def get_full_recipe_by_id(session, recipe_id: int) -> Recipes:
     """
-    Getting the recipe to the given ID with its ingredients and needed kitchen tools.
+    Returning a Recipe object with ingredients and tools loaded.
+    Raising HTTPException(404) if not found.
     """
+    recipe = (
+        session.query(Recipes)
+        .options(
+            joinedload(Recipes.ingredients).joinedload(RecipeIngredients.ingredient),
+            joinedload(Recipes.tools).joinedload(RecipeTools.tool)
+        )
+        .filter(Recipes.id == recipe_id)
+        .first()
+    )
 
-    recipe = get_recipe_by_id(session, recipe_id)
-
-    if recipe is None:
-        return None
+    if not recipe:
+        raise HTTPException(status_code=404, detail="Recipe not found")
     
-    ingredient_dict = get_recipe_ingredients(session, recipe_id)
-    tool_list = get_recipe_tools(session, recipe_id)
-
-    return {"recipe": recipe,
-            "ingredients": ingredient_dict,
-            "tools": tool_list}
+    return recipe
 
 
 def get_recipes_by_ingredients(session, ingredient_list: list):

@@ -1,68 +1,51 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
+from sqlalchemy.orm import Session, joinedload
+from database import SessionLocal
+from models import Recipes, RecipeIngredients, RecipeTools
+from schemas import RecipeResponse
 from pydantic import BaseModel
 from typing import List, Optional
 from database import SessionLocal
-from crud import get_full_recipe_by_id, add_ingredient_to_recipe, add_tool_to_recipe, create_recipe
+from crud import create_full_recipe, get_full_recipe_by_id
+from schemas import RecipeCreate, RecipeResponse, RecipeCreateResponse, IngredientResponse, ToolResponse
 
 app = FastAPI(title="Recipe API")
-
-class IngredientIn(BaseModel):
-    name: str
-    quantity: Optional[float] = None
-    unit: Optional[str] = None
-
-class RecipeIn(BaseModel):
-    name: str
-    number_of_portions: int
-    instructions: str
-    ingredients: List[IngredientIn]
-    tools: List[str] = []
-    meal_type: Optional[str] = None
-    nationality: Optional[str] = None
-    notes: Optional[str] = None
 
 @app.get("/")
 def read_root():
     return {"message": "Welcome to Recipe API!"}
 
-@app.get("/recipes/{recipe_id}")
+
+@app.get("/recipes/{recipe_id}", response_model=RecipeResponse)
 def read_recipe(recipe_id: int):
     session = SessionLocal()
-    result = get_full_recipe_by_id(session, recipe_id)
-    session.close()
-
-    if result is None:
-        return {"error": "Recipe not found"}
-
-    from schemas import serialize_recipe
-    return serialize_recipe(result)
+    try:
+        recipe = get_full_recipe_by_id(session, recipe_id)
+        return recipe
+    finally:
+        session.close()
 
 
-@app.post("/recipes/")
-def create_full_recipe(recipe: RecipeIn):
+@app.post("/recipes/", response_model=RecipeCreateResponse, status_code=201)
+def create_recipe(recipe: RecipeCreate):
+    """
+    Creating a new recipe and saving it in the database.
+    """
     session = SessionLocal()
 
-    recipe_id = create_recipe(session,
-                              name=recipe.name,
-                              number_of_portions=recipe.number_of_portions,
-                              instructions=recipe.instructions,
-                              meal_type=recipe.meal_type,
-                              nationality=recipe.nationality,
-                              notes=recipe.notes)
+    try:
+        recipe_id = create_full_recipe(session, recipe)
+        return {"recipe_id": recipe_id}
+   
+    except Exception as e:
+        session.rollback()
 
-    # Zutaten hinzufügen
-    for ing in recipe.ingredients:
-        add_ingredient_to_recipe(session,
-                                 recipe_id,
-                                 name=ing.name,
-                                 quantity=ing.quantity,
-                                 unit=ing.unit)
+        raise HTTPException(
+            status_code=400,
+            detail=f"Could not create recipe: {str(e)}"
+        )
 
-    # Tools hinzufügen
-    for tool in recipe.tools:
-        add_tool_to_recipe(session, recipe_id, name=tool)
+    finally:
+        session.close()
 
-    session.commit()
-    session.close()
-
-    return {"recipe_id": recipe_id}
+    
