@@ -1,40 +1,50 @@
-from models import Recipes, Ingredients, RecipeIngredients, KitchenTools, RecipeTools
+from app.models import Recipes, Ingredients, RecipeIngredients, KitchenTools, RecipeTools, RecipeCollections, Collections
 from datetime import date
-from sqlalchemy import select, func, desc
+from sqlalchemy import select, func, desc, delete
 from sqlalchemy.orm import joinedload
 from fastapi import HTTPException
-from schemas import RecipeCreate
+from app.schemas import RecipeCreate, CollectionCreate
 
+"""
+RECIPES
+"""
 
 def create_full_recipe(session,
-                       recipe: RecipeCreate):
+                       recipe: RecipeCreate) -> int:
     """
     Creating compelete recipe with linkages to the needed ingredients and kitchen tools.
     Saving the changes permanently in the database.
     """
 
-    recipe_id = create_recipe(session=session, 
-                              name=recipe.name, 
-                              number_of_portions=recipe.number_of_portions,
-                              instructions=recipe.instructions,
-                              meal_type=recipe.meal_type,
-                              notes=recipe.notes,
-                              nationality=recipe.nationality)
-    
-    for ingredient in recipe.ingredients:
-        add_ingredient_to_recipe(session, 
-                                 recipe_id, 
-                                 ingredient.name,
-                                 ingredient.quantity, 
-                                 ingredient.unit,
-                                 getattr(ingredient, "component", None))
+    try:
+        recipe_id = create_recipe(session=session, 
+                                name=recipe.name, 
+                                number_of_portions=recipe.number_of_portions,
+                                instructions=recipe.instructions,
+                                meal_type=recipe.meal_type,
+                                notes=recipe.notes,
+                                nationality=recipe.nationality)
         
-    for kitchen_tool in recipe.tools:
-        add_tool_to_recipe(session, 
-                            recipe_id,
-                            kitchen_tool.name)
+        for ingredient in recipe.ingredients:
+            add_ingredient_to_recipe(session, 
+                                    recipe_id, 
+                                    ingredient.name,
+                                    ingredient.quantity, 
+                                    ingredient.unit,
+                                    getattr(ingredient, "component", None))
             
-    return recipe_id
+        for kitchen_tool in recipe.tools:
+            add_tool_to_recipe(session, 
+                                recipe_id,
+                                kitchen_tool.name)
+
+        session.commit()
+        return recipe_id
+    
+    except Exception as e:
+        session.rollback()
+        raise ValueError(f"Could not create recipe: {str(e)}")
+
 
 
 def create_recipe(session,
@@ -43,12 +53,11 @@ def create_recipe(session,
                   instructions:str,
                   meal_type:str|None=None,
                   notes:str|None=None,
-                  nationality:str|None=None):
+                  nationality:str|None=None) -> int:
     """
     Creating new recipe and saving it in the database.
     """
 
-    # Create new Recipe
     new_recipe = Recipes(name = name,
                          number_of_portions = number_of_portions,
                          instructions = instructions,
@@ -101,112 +110,12 @@ def add_tool_to_recipe(session,
     session.flush()
 
 
-def get_or_create_ingredient(session, name: str):
-    """
-    Getting ingredient object with the given name. Create it if it does not exist.
-    """
-    ingredient = session.execute(
-        select(Ingredients)
-        .where(Ingredients.name == name)
-    ).scalar_one_or_none()
-
-    if ingredient is None:
-        ingredient = Ingredients(name=name)
-        session.add(ingredient)
-        session.flush() 
-
-    return ingredient
-
-
-def get_or_create_kitchen_tool(session, name: str):
-    """
-    Getting kitchen tool object with the given name. Create it if it does not exist.
-    """
-    tool = session.execute(
-        select(KitchenTools).where(KitchenTools.name == name)
-    ).scalar_one_or_none()
-
-    if tool is None:
-        tool = KitchenTools(name=name)
-        session.add(tool)
-        session.flush()
-
-    return tool
-
-
-def get_recipe_by_id(session, recipe_id: int):
-    """
-    Getting recipe with the given ID. 
-    Returning None if it does not exist 
-    """
-
-    recipe = session.execute(
-        select(Recipes).where(Recipes.id == recipe_id)
-    ).scalar_one_or_none()
-    
-    return recipe
-
-
-def get_recipe_ingredients(session, recipe_id: int):
-    """
-    Getting all ingredients of the recipe with the given ID.
-    Returning a dictionary with the ingredient name as keys and {"quantity":qnt, "unit":u, "component": cmp} as values.
-    Returning an empty dictionary if there are no ingredients listed for this recipe.
-    Attention: No checking whether a recipe with the given ID exists!
-    """
-
-    ingredient_list = session.execute(
-        select(Ingredients.name, 
-               RecipeIngredients.quantity, 
-               RecipeIngredients.unit,
-               RecipeIngredients.component)
-        .join(Ingredients,
-               Ingredients.id == RecipeIngredients.ingredient_id)
-        .where(RecipeIngredients.recipe_id == recipe_id)
-    ).all()
-
-    ingredients_dict = {}
-    for name, qnt, u, cmp in ingredient_list:
-        ingredients_dict[name] = {"quantity":qnt, "unit":u, "component": cmp}
-
-    return ingredients_dict
-
-
-def get_recipe_tools(session, recipe_id: int):
-    """
-    Getting a list of all tools of the recipe with the given ID.
-    Returning an empty list if there are no tools listed for this recipe.
-    Attention: No checking whether a recipe with the given ID exists!
-    """
-
-    tool_list = session.execute(
-        select(KitchenTools.name)
-        .select_from(RecipeTools)
-        .join(KitchenTools,
-               KitchenTools.id == RecipeTools.tool_id)
-        .where(RecipeTools.recipe_id == recipe_id)
-    ).scalars().all()
-
-    return tool_list
-
-
-def get_all_recipes(session):
-    """
-    Getting a list of all recipes in the database.
-    """
-
-    recipe_list = session.execute(
-        select(Recipes)
-    ).scalars().all()
-
-    return recipe_list
-
-
 def get_full_recipe_by_id(session, recipe_id: int) -> Recipes:
     """
     Returning a Recipe object with ingredients and tools loaded.
     Raising HTTPException(404) if not found.
     """
+
     recipe = (
         session.query(Recipes)
         .options(
@@ -221,6 +130,168 @@ def get_full_recipe_by_id(session, recipe_id: int) -> Recipes:
         raise HTTPException(status_code=404, detail="Recipe not found")
     
     return recipe
+
+
+def get_all_recipes(session, skip: int = 0, limit: int = 10) -> list[Recipes]:
+    """
+    Returning a list of all recipes in the database.
+    The number of returned recipes is limited 
+    and the first recipes in the database can be skipped.
+    """
+
+    recipe_list = session.query(Recipes).offset(skip).limit(limit).all()
+
+    return recipe_list
+
+
+def get_recipes_filtered(session,
+                         meal_types: list[str] | None = None,
+                         nationalities: list[str] | None = None,
+                         collections: list[str] | None = None,
+                         skip: int = 0,
+                         limit: int = 10) -> list[Recipes]:
+    """
+    Returning a list of all recipes matching the given filters.
+    The number of returned recipes is limited 
+    and the first recipes in the database can be skipped.
+    """
+
+    query = session.query(Recipes)
+
+    if meal_types:
+        query = query.filter(Recipes.meal_type.in_(meal_types))
+    
+    if nationalities:
+        query = query.filter(Recipes.nationality.in_(nationalities))
+
+    if collections:
+        query = query.filter(Recipes.collections.in_(collections))
+
+    return query.offset(skip).limit(limit).all()
+
+
+def delete_recipe_by_id(session, recipe_id: int):
+    """
+    Removing the recipe with the given ID from the database.
+    """
+
+    recipe = session.get(Recipes, recipe_id)
+
+    if not recipe:
+        return False
+
+    session.delete(recipe)
+    session.flush()
+
+    delete_not_used_ingredients(session)
+
+    session.commit()
+
+"""
+COLLECIONS
+"""
+
+def create_collection(session, collection: CollectionCreate) -> int:
+    """
+    Creating a new Collection.
+    """
+
+    new_collection = Collections(name=collection.name)
+    session.add(new_collection)
+    session.commit()
+
+    return new_collection.id
+
+
+def add_recipe_to_collection(session,
+                             recipe_id:int,
+                             collection_id:int):
+    """
+    Creating a new linkage between a recipe and a collection and saving it in the database.
+    """
+
+    new_recipe_collection = RecipeCollections(recipe_id = recipe_id,
+                                              collection_id = collection_id)
+    
+    session.add(new_recipe_collection)
+    session.commit()
+
+
+def get_all_collections(session) -> list[Collections]:
+    """
+    Returning all collections from the database.
+    """
+
+    collection_list = session.query(Collections).all()
+    return collection_list
+
+"""
+INGREDIENTS
+"""
+
+def get_or_create_ingredient(session, name: str) -> Ingredients:
+    """
+    Returning ingredient object with the given name. 
+    Creating it if it does not exist.
+    """
+    ingredient = session.execute(
+        select(Ingredients)
+        .where(Ingredients.name == name)
+    ).scalar_one_or_none()
+
+    if ingredient is None:
+        ingredient = Ingredients(name=name)
+        session.add(ingredient)
+        session.flush() 
+
+    return ingredient
+
+
+def delete_not_used_ingredients(session):
+    """
+    Removing all ingredients from the database which are not used in any recipe anymore.
+    """
+
+    ingredients_in_recipes = session.query(RecipeIngredients.ingredient_id)
+    session.query(Ingredients
+                  ).filter(~Ingredients.id.in_(ingredients_in_recipes)
+                  ).delete(synchronize_session=False)
+    
+    session.flush
+
+"""
+KItCHENTOOLS
+"""
+
+def get_or_create_kitchen_tool(session, name: str) -> KitchenTools:
+    """
+    Returning kitchen tool object with the given name. 
+    Creating it if it does not exist.
+    """
+    tool = session.execute(
+        select(KitchenTools).where(KitchenTools.name == name)
+    ).scalar_one_or_none()
+
+    if tool is None:
+        tool = KitchenTools(name=name)
+        session.add(tool)
+        session.flush()
+
+    return tool
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 def get_recipes_by_ingredients(session, ingredient_list: list):
@@ -321,3 +392,5 @@ def get_recipes_by_meal_type(session, meal_type: str):
     ).scalars.all()
 
     return recipe_list
+
+
